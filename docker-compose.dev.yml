@@ -1,0 +1,69 @@
+version: "3.9"
+
+services:
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.15.0
+    container_name: elasticsearch
+    environment:
+      node.name: es01
+      cluster.name: dev-cluster
+      discovery.type: single-node
+      ES_JAVA_OPTS: "-Xms2g -Xmx2g"   # increased for t2.medium with 4GB RAM
+      ELASTIC_PASSWORD: changeme
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -u elastic:changeme -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"'"]
+      interval: 10s
+      retries: 10
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.15.0
+    container_name: kibana
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+      ELASTICSEARCH_USERNAME: elastic
+      ELASTICSEARCH_PASSWORD: changeme
+    ports:
+      - "5601:5601"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  redis:
+    image: redis:7
+    container_name: redis
+    ports:
+      - "6379:6379"
+
+  backend:
+    build: ./backend
+    container_name: backend
+    volumes:
+      - ./backend:/usr/src/app
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      ELASTIC_URL: http://elasticsearch:9200
+      ELASTIC_USERNAME: elastic
+      ELASTIC_PASSWORD: changeme
+      KIBANA_HOST: http://kibana:5601
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "4000:4000"
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      kibana:
+        condition: service_started
+
+volumes:
+  esdata:
+
